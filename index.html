@@ -330,6 +330,53 @@
   @keyframes fadeSlideIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
   .fade-in { animation: fadeSlideIn .4s ease forwards; }
 
+  /* ─── GOOGLE SHEETS SYNC ─── */
+  .gs-setup-card {
+    background: linear-gradient(135deg, #E8F5E9, #F1F8E9);
+    border: 2px dashed var(--green); border-radius: 20px; padding: 20px;
+    margin-bottom: 20px;
+  }
+  .gs-setup-card.connected {
+    background: linear-gradient(135deg, #E8F5E9, #E0F7FA);
+    border: 2px solid var(--green);
+  }
+  .gs-setup-card h3 { font-family:'Fredoka One',cursive; font-size:1.1rem; color:var(--green); margin-bottom:12px; }
+  .gs-url-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .gs-url-input {
+    flex:1; min-width:200px; padding:10px 14px;
+    border:2px solid #C8E6C9; border-radius:12px;
+    font-family:'Nunito',sans-serif; font-size:.85rem; font-weight:700;
+    outline:none; background:#fff; transition:border-color .2s;
+  }
+  .gs-url-input:focus { border-color:var(--green); }
+  .gs-btn {
+    padding:10px 18px; border:none; border-radius:12px;
+    font-family:'Nunito',sans-serif; font-weight:800; font-size:.85rem;
+    cursor:pointer; transition:transform .15s; white-space:nowrap;
+  }
+  .gs-btn:hover { transform:translateY(-1px); }
+  .gs-btn-connect { background:var(--green); color:#fff; box-shadow:0 3px 10px rgba(107,203,119,.4); }
+  .gs-btn-sync    { background:var(--blue);  color:#fff; box-shadow:0 3px 10px rgba(69,183,209,.4); }
+  .gs-btn-clear   { background:#f5f5f5; color:#999; }
+  .sync-status {
+    margin-top:10px; padding:8px 14px; border-radius:10px;
+    font-size:.82rem; font-weight:700; display:none;
+  }
+  .sync-status.sending  { background:#FFF3E0; color:var(--orange); display:block; }
+  .sync-status.success  { background:#E8F5E9; color:var(--green);  display:block; }
+  .sync-status.error    { background:#FFEBEE; color:var(--red);    display:block; }
+  .sync-badge {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:4px 10px; border-radius:999px; font-size:.75rem; font-weight:800;
+    margin-left:8px;
+  }
+  .sync-badge.on  { background:#E8F5E9; color:var(--green); }
+  .sync-badge.off { background:#F5F5F5; color:#aaa; }
+  .sync-dot { width:7px; height:7px; border-radius:50%; }
+  .sync-dot.on  { background:var(--green); animation:pulse-dot 1.5s ease infinite; }
+  .sync-dot.off { background:#ccc; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+
   /* Responsive */
   @media (max-width: 700px) {
     .cell { width: 42px; height: 42px; font-size: 1.4rem; }
@@ -366,6 +413,10 @@
   <div class="top-bar">
     <div class="logo-small">👑 皇后大挑戰</div>
     <span class="player-badge" id="player-name-badge">玩家</span>
+    <span class="sync-badge off" id="sync-badge-topbar">
+      <span class="sync-dot off" id="sync-dot"></span>
+      <span id="sync-badge-label">未連線試算表</span>
+    </span>
     <div class="top-bar-right">
       <button class="nav-btn active" onclick="switchTab('game',this)">🎮 遊戲</button>
       <button class="nav-btn" onclick="switchTab('leaderboard',this)">🏆 排行榜</button>
@@ -472,6 +523,30 @@
 
     <!-- ── LEADERBOARD TAB ── -->
     <div id="tab-leaderboard" class="tab-panel" style="width:100%">
+      <!-- Google Sheets 設定區 -->
+      <div class="gs-setup-card" id="gs-setup-card">
+        <h3>📊 Google 試算表同步設定</h3>
+        <div class="gs-url-row">
+          <input type="text" class="gs-url-input" id="gas-url-input"
+            placeholder="貼上你的 GAS Web App 網址（https://script.google.com/macros/s/AKfycbxmvFdvmfSuZRPfk74tCTGhE37xHbD2gwvjYAuJFBCKZu_gCwMST8l1kHxRu9xQH0Mdwg/exec）">
+          <button class="gs-btn gs-btn-connect" onclick="connectGAS()">🔗 連線</button>
+          <button class="gs-btn gs-btn-clear" onclick="disconnectGAS()">✕ 清除</button>
+        </div>
+        <div class="sync-status" id="sync-status"></div>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="gs-btn gs-btn-sync" onclick="syncAllToSheet()" id="btn-sync-all" disabled>
+            ☁️ 同步本機所有紀錄到試算表
+          </button>
+          <button class="gs-btn" style="background:#F3E8FF;color:var(--purple)" onclick="openSheet()" id="btn-open-sheet" disabled>
+            📂 開啟試算表
+          </button>
+        </div>
+        <div style="margin-top:10px;font-size:.8rem;color:#999;line-height:1.6">
+          💡 請先完成 GAS 部署，再將 Web App 網址貼上後按「連線」。<br>
+          新的過關紀錄會<strong>自動同步</strong>，也可手動同步所有本機紀錄。
+        </div>
+      </div>
+
       <div class="leaderboard-card fade-in">
         <div class="lb-header">
           <h2>🏆 排行榜</h2>
@@ -582,6 +657,7 @@ let conflictCount = 0;
 let hintCount = 0;
 let showingHint = false;
 let gameActive = false;
+let usedSolveFlag = false;
 
 const LEVEL_CONFIG = {
   1: { size: 4, name: '入門', emoji: '🌱' },
@@ -668,6 +744,7 @@ function initGame() {
   showingHint = false;
   gameActive = false;
   startTime = null;
+  usedSolveFlag = false;
 
   document.getElementById('timer-display').textContent = '⏱ 00:00';
   document.getElementById('conflict-count').textContent = '0 次';
@@ -886,6 +963,7 @@ function resetBoard() {
 //  AUTO SOLVE
 // ═══════════════════════════════════════════════
 function autoSolve() {
+  usedSolveFlag = true;
   const solution = [];
   function solve(row) {
     if (row===boardSize) return true;
@@ -966,19 +1044,184 @@ function launchConfetti() {
 //  SAVE SCORE
 // ═══════════════════════════════════════════════
 function saveScore() {
+  const record = {
+    player:     currentPlayer,
+    level:      currentLevel,
+    levelName:  LEVEL_CONFIG[currentLevel].name,
+    boardSize:  boardSize + 'x' + boardSize,
+    time:       elapsedSeconds,
+    timeSec:    elapsedSeconds,
+    timeStr:    formatTime(elapsedSeconds),
+    hints:      hintCount,
+    conflicts:  conflictCount,
+    usedSolve:  usedSolveFlag ? '是' : '否',
+    date:       new Date().toLocaleDateString('zh-TW'),
+    timestamp:  new Date().toLocaleString('zh-TW', {hour12:false}),
+    source:     'HTML Game'
+  };
+
+  // 儲存到 localStorage
   const scores = JSON.parse(localStorage.getItem('queens_scores')||'[]');
-  scores.push({
-    player: currentPlayer,
-    level: currentLevel,
-    levelName: LEVEL_CONFIG[currentLevel].name,
-    time: elapsedSeconds,
-    timeStr: formatTime(elapsedSeconds),
-    hints: hintCount,
-    conflicts: conflictCount,
-    date: new Date().toLocaleDateString('zh-TW')
-  });
+  scores.push(record);
   scores.sort((a,b)=>a.time-b.time);
   localStorage.setItem('queens_scores', JSON.stringify(scores.slice(0,100)));
+
+  // 同步到 Google 試算表
+  sendRecordToSheet(record);
+}
+
+// ═══════════════════════════════════════════════
+//  GOOGLE SHEETS 整合
+// ═══════════════════════════════════════════════
+let gasUrl = '';
+let sheetUrl = '';
+
+function loadGASSettings() {
+  gasUrl   = localStorage.getItem('queens_gas_url')  || '';
+  sheetUrl = localStorage.getItem('queens_sheet_url')|| '';
+  if (gasUrl) {
+    document.getElementById('gas-url-input').value = gasUrl;
+    setGASConnected(true);
+  }
+}
+
+function connectGAS() {
+  const url = document.getElementById('gas-url-input').value.trim();
+  if (!url || !url.startsWith('https://script.google.com')) {
+    showSyncStatus('error', '❌ 請輸入正確的 GAS Web App 網址');
+    return;
+  }
+  showSyncStatus('sending', '🔍 正在測試連線...');
+
+  // 使用 no-cors fetch ping（GAS doGet ping）
+  fetch(url + '?action=ping')
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'ok') {
+        gasUrl = url;
+        localStorage.setItem('queens_gas_url', gasUrl);
+        showSyncStatus('success', '✅ 連線成功！' + data.message);
+        setGASConnected(true);
+      } else {
+        showSyncStatus('error', '❌ 連線失敗：' + (data.message||'未知錯誤'));
+      }
+    })
+    .catch(() => {
+      // GAS 可能有 CORS 限制，但只要 URL 格式正確就視為儲存成功
+      gasUrl = url;
+      localStorage.setItem('queens_gas_url', gasUrl);
+      showSyncStatus('success', '✅ 網址已儲存（GAS 回應正常需部署為公開 Web App）');
+      setGASConnected(true);
+    });
+}
+
+function disconnectGAS() {
+  gasUrl = ''; sheetUrl = '';
+  localStorage.removeItem('queens_gas_url');
+  localStorage.removeItem('queens_sheet_url');
+  document.getElementById('gas-url-input').value = '';
+  setGASConnected(false);
+  showSyncStatus('', '');
+}
+
+function setGASConnected(connected) {
+  const card   = document.getElementById('gs-setup-card');
+  const badge  = document.getElementById('sync-badge-topbar');
+  const dot    = document.getElementById('sync-dot');
+  const label  = document.getElementById('sync-badge-label');
+  const btnAll = document.getElementById('btn-sync-all');
+  const btnOpen= document.getElementById('btn-open-sheet');
+
+  card.classList.toggle('connected', connected);
+  badge.className = 'sync-badge ' + (connected?'on':'off');
+  dot.className   = 'sync-dot '   + (connected?'on':'off');
+  label.textContent = connected ? '試算表同步中' : '未連線試算表';
+  btnAll.disabled  = !connected;
+  btnOpen.disabled = !connected;
+}
+
+function showSyncStatus(type, msg) {
+  const el = document.getElementById('sync-status');
+  el.className = 'sync-status' + (type?' '+type:'');
+  el.textContent = msg;
+  if (!type) el.style.display='none';
+}
+
+// 送出單筆紀錄
+function sendRecordToSheet(record) {
+  if (!gasUrl) return;
+  fetch(gasUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' }, // GAS doPost 用 text/plain 繞過 CORS preflight
+    body: JSON.stringify({ record })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      if (data.sheetUrl) {
+        sheetUrl = data.sheetUrl;
+        localStorage.setItem('queens_sheet_url', sheetUrl);
+      }
+      showToast('☁️ 已同步到試算表！');
+    }
+  })
+  .catch(() => { /* 靜默失敗，不影響遊戲 */ });
+}
+
+// 批次同步所有本機紀錄
+function syncAllToSheet() {
+  if (!gasUrl) return;
+  const records = JSON.parse(localStorage.getItem('queens_scores')||'[]');
+  if (records.length === 0) {
+    showSyncStatus('error', '⚠️ 本機沒有任何紀錄可同步');
+    return;
+  }
+  showSyncStatus('sending', `🔄 正在上傳 ${records.length} 筆紀錄...`);
+
+  fetch(gasUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ records })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      if (data.sheetUrl) {
+        sheetUrl = data.sheetUrl;
+        localStorage.setItem('queens_sheet_url', sheetUrl);
+      }
+      showSyncStatus('success', `✅ 成功同步 ${records.length} 筆！試算表共 ${data.total||'?'} 筆紀錄`);
+    } else {
+      showSyncStatus('error', '❌ 同步失敗：' + (data.message||'未知錯誤'));
+    }
+  })
+  .catch(err => {
+    showSyncStatus('error', '❌ 網路錯誤：' + err.message);
+  });
+}
+
+function openSheet() {
+  const url = sheetUrl || (gasUrl ? gasUrl.replace('/exec','').replace('/dev','') : '');
+  if (url) window.open(url, '_blank');
+  else showSyncStatus('error', '⚠️ 尚未取得試算表網址，請先同步一筆紀錄');
+}
+
+// Toast 通知
+function showToast(msg) {
+  let t = document.getElementById('gs-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'gs-toast';
+    t.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;
+      background:#1a1a2e;color:#fff;padding:12px 20px;border-radius:14px;
+      font-family:'Nunito',sans-serif;font-weight:800;font-size:.9rem;
+      box-shadow:0 8px 24px rgba(0,0,0,.25);transform:translateY(80px);
+      transition:transform .4s cubic-bezier(.34,1.56,.64,1);`;
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.transform = 'translateY(0)';
+  setTimeout(() => { t.style.transform = 'translateY(80px)'; }, 3000);
 }
 
 // ═══════════════════════════════════════════════
@@ -1033,6 +1276,7 @@ function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
   if (saved) {
     document.getElementById('nickname-input').value = saved;
   }
+  loadGASSettings();
 })();
 </script>
 </body>
