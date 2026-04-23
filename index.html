@@ -528,7 +528,7 @@
         <h3>📊 Google 試算表同步設定</h3>
         <div class="gs-url-row">
           <input type="text" class="gs-url-input" id="gas-url-input"
-            placeholder="貼上你的 GAS Web App 網址（https://script.google.com/macros/s/AKfycbxmvFdvmfSuZRPfk74tCTGhE37xHbD2gwvjYAuJFBCKZu_gCwMST8l1kHxRu9xQH0Mdwg/exec）">
+            placeholder="貼上你的 GAS Web App 網址（https://script.google.com/macros/s/...）">
           <button class="gs-btn gs-btn-connect" onclick="connectGAS()">🔗 連線</button>
           <button class="gs-btn gs-btn-clear" onclick="disconnectGAS()">✕ 清除</button>
         </div>
@@ -1076,13 +1076,13 @@ function saveScore() {
 let gasUrl = '';
 let sheetUrl = '';
 
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbw9vYLJlKwQZ-zdbkDEnAT6KNTT_m6P5ZzEB_pnpn4DR4C_a5DMZfzxFKISm3HbFOzkOg/exec';
+
 function loadGASSettings() {
-  gasUrl   = localStorage.getItem('queens_gas_url')  || '';
+  gasUrl   = localStorage.getItem('queens_gas_url')  || DEFAULT_GAS_URL;
   sheetUrl = localStorage.getItem('queens_sheet_url')|| '';
-  if (gasUrl) {
-    document.getElementById('gas-url-input').value = gasUrl;
-    setGASConnected(true);
-  }
+  document.getElementById('gas-url-input').value = gasUrl;
+  if (gasUrl) setGASConnected(true);
 }
 
 function connectGAS() {
