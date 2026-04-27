@@ -82,7 +82,7 @@
     <div id="toast-container" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <!-- Screen 1: Login -->
-    <div id="login-screen" class="max-w-md mx-auto mt-20 bg-white rounded-3xl shadow-xl overflow-hidden border-4 border-blue-200 p-8 transform transition-all duration-500">
+    <div id="login-screen" class="max-w-md mx-auto mt-10 lg:mt-20 bg-white rounded-3xl shadow-xl overflow-hidden border-4 border-blue-200 p-8 transform transition-all duration-500">
         <div class="text-center mb-8">
             <div class="text-6xl mb-4">👑</div>
             <h1 class="text-3xl font-black text-blue-600 mb-2">皇后大挑戰</h1>
@@ -98,6 +98,24 @@
             <button onclick="app.login()" class="w-full bg-gradient-to-b from-blue-400 to-blue-600 text-white text-xl font-bold py-4 rounded-xl shadow-lg hover:shadow-xl hover:from-blue-500 hover:to-blue-700 transform hover:-translate-y-1 transition-all active:translate-y-1">
                 開始挑戰 🚀
             </button>
+        </div>
+
+        <!-- Google Sheet Link & Global Leaderboard -->
+        <div class="mt-8 pt-6 border-t-2 border-slate-100">
+            <div class="text-center mb-5">
+                <a href="https://docs.google.com/spreadsheets/d/1qr8BAToSUL-vT_WI6SeF0QwZD6ylRtVZhMfOwPJ5w34/edit?usp=sharing" target="_blank" class="inline-flex items-center gap-1 text-blue-500 hover:text-blue-700 font-bold underline transition-colors bg-blue-50 px-4 py-2 rounded-lg">
+                    <span>📊</span> 查看完整 Google 試算表記錄
+                </a>
+            </div>
+            <h2 class="text-xl font-black text-amber-500 mb-4 flex items-center justify-center gap-2">
+                <span>🏆</span> 全球神人榜 Top 10 <span>🏆</span>
+            </h2>
+            <div id="global-leaderboard-loading" class="text-center text-slate-400 text-sm font-bold animate-pulse py-4">
+                載入最新排行中...
+            </div>
+            <div id="global-leaderboard-list" class="space-y-2 hidden max-h-[250px] overflow-y-auto custom-scroll pr-2">
+                <!-- JS will populate this -->
+            </div>
         </div>
     </div>
 
@@ -176,7 +194,7 @@
             <!-- Leaderboard Card -->
             <div class="bg-white p-6 rounded-3xl shadow-xl border-4 border-pink-200 flex-1 flex flex-col min-h-[300px]">
                 <h2 class="text-2xl font-black text-pink-600 mb-4 flex items-center gap-2">
-                    <span>🏆</span> 英雄榜
+                    <span>🏆</span> 本機英雄榜
                 </h2>
                 <div class="flex bg-pink-50 p-1 rounded-xl mb-4">
                     <button onclick="app.setLeaderboardView(4)" id="lb-tab-4" class="flex-1 py-1 rounded-lg font-bold text-sm text-pink-600 transition-all bg-white shadow">入門</button>
@@ -189,7 +207,7 @@
                 </div>
                 
                 <button onclick="app.logout()" class="mt-4 w-full text-slate-400 hover:text-slate-600 font-bold text-sm underline transition-colors">
-                    切換玩家
+                    返回大廳 / 切換玩家
                 </button>
             </div>
         </div>
@@ -314,6 +332,9 @@
                 if (savedUser) {
                     document.getElementById('nickname').value = savedUser;
                 }
+                
+                // 進入頁面時，自動抓取 Google 試算表的 Top 10 排行
+                this.fetchGlobalLeaderboard();
             },
 
             showToast(msg, isError = false) {
@@ -360,6 +381,9 @@
                 document.getElementById('nickname').value = '';
                 document.getElementById('game-screen').classList.add('hidden');
                 document.getElementById('login-screen').classList.remove('hidden');
+                
+                // 返回大廳時刷新一下最新排行榜
+                this.fetchGlobalLeaderboard();
             },
 
             setLevel(n) {
@@ -465,9 +489,6 @@
 
             renderBoard() {
                 const conflicts = this.getConflicts();
-                if (conflicts.length > 0 && this.state.queens.length > 1) {
-                    // Not playing error on every placement, just visual cue
-                }
 
                 const cells = document.querySelectorAll('.board-cell');
                 cells.forEach(cell => {
@@ -577,7 +598,7 @@
                 lb.push(record);
                 Storage.set('eq_leaderboard', lb);
 
-                // 將記錄傳送至 Google 試算表 (新增此行)
+                // 傳送記錄至 Google 試算表
                 this.saveToGoogleSheets(record);
                 
                 // Show Modal
@@ -602,17 +623,16 @@
                 this.renderLeaderboard();
             },
 
-            // 新增發送資料到 Google 試算表的功能
+            // 發送資料到 Google 試算表的功能 (保持原設計)
             saveToGoogleSheets(record) {
-                // ⚠️ 注意：請將下方的字串替換成你部署 GAS 後獲得的「網頁應用程式 URL」
+                // ⚠️ 注意：如果你有部署 GAS 並獲得了 URL，請貼在這裡
                 const gasUrl = 'https://script.google.com/macros/s/AKfycbw-mUDLzgRkMOTRfZFDVj_xC0HhpQj_OCl5WwFxdeeIU-3-_bOnCJr2J4e3jwi8EoNmRg/exec'; 
                 
                 if (!gasUrl) {
-                    console.log('未設定 Google Apps Script URL，目前僅儲存於本地端。');
+                    console.log('未設定 Google Apps Script URL，目前僅儲存於本地端並更新總排行。');
                     return;
                 }
 
-                // 準備要傳送的資料
                 const payload = {
                     name: record.name,
                     level: record.level,
@@ -620,14 +640,10 @@
                     formattedTime: this.formatTime(record.time)
                 };
 
-                // 透過背景發送請求，不影響玩家當下的過關體驗
                 fetch(gasUrl, {
                     method: 'POST',
                     body: JSON.stringify(payload),
-                    // 使用 text/plain 可以避免觸發瀏覽器複雜的 CORS 預檢請求
-                    headers: {
-                        'Content-Type': 'text/plain;charset=utf-8',
-                    }
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -653,7 +669,6 @@
                 else if (this.state.level === 6) this.setLevel(8);
             },
 
-            // Timer Logic
             startTimer() {
                 this.state.startTime = Date.now();
                 this.state.timerId = setInterval(() => {
@@ -679,7 +694,7 @@
                 document.getElementById('display-time').innerText = this.formatTime(this.state.timeElapsed);
             },
 
-            // Leaderboard Logic
+            // --- Local Leaderboard Logic (遊戲畫面內的本機排行) ---
             setLeaderboardView(n) {
                 this.state.leaderboardViewLevel = n;
                 
@@ -702,7 +717,6 @@
                 list.innerHTML = '';
                 
                 const lb = Storage.get('eq_leaderboard', []);
-                // Filter by view level, sort by time ASC
                 const filtered = lb
                     .filter(r => r.level === this.state.leaderboardViewLevel)
                     .sort((a, b) => a.time - b.time);
@@ -717,7 +731,6 @@
                 }
 
                 filtered.forEach((record, index) => {
-                    // Top 3 style differences
                     let medal = `<span class="w-6 font-bold text-slate-400">${index + 1}.</span>`;
                     let bgClass = "bg-white border-slate-100";
                     
@@ -728,7 +741,6 @@
                     const el = document.createElement('div');
                     el.className = `flex justify-between items-center p-3 mb-2 rounded-xl border ${bgClass} shadow-sm`;
                     
-                    // Highlight current user's record
                     const isMe = record.name === this.state.username;
                     const nameColor = isMe ? 'text-pink-600 font-black' : 'text-slate-600 font-bold';
 
@@ -742,6 +754,139 @@
                         </div>
                     `;
                     list.appendChild(el);
+                });
+            },
+
+            // --- Global Leaderboard Logic (登入畫面的 Google Sheet 排行) ---
+            
+            // 安全的 CSV 欄位解析器（預防名字裡有逗號）
+            parseCSVRow(str) {
+                let result = [];
+                let current = '';
+                let inQuotes = false;
+                for (let i = 0; i < str.length; i++) {
+                    let char = str[i];
+                    if (char === '"') {
+                        if (inQuotes && str[i + 1] === '"') {
+                            current += '"';
+                            i++;
+                        } else {
+                            inQuotes = !inQuotes;
+                        }
+                    } else if (char === ',' && !inQuotes) {
+                        result.push(current);
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                result.push(current);
+                return result;
+            },
+
+            // 讀取 Google 試算表 CSV 內容
+            async fetchGlobalLeaderboard() {
+                // 將使用者分享的連結轉換為 CSV 匯出連結
+                const sheetId = '1qr8BAToSUL-vT_WI6SeF0QwZD6ylRtVZhMfOwPJ5w34';
+                const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+                
+                const loadingMsg = document.getElementById('global-leaderboard-loading');
+                const listContainer = document.getElementById('global-leaderboard-list');
+
+                try {
+                    loadingMsg.classList.remove('hidden');
+                    listContainer.classList.add('hidden');
+                    loadingMsg.innerText = '載入最新排行中...';
+
+                    const response = await fetch(csvUrl);
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const csvText = await response.text();
+                    
+                    // 以換行符號分割資料列
+                    const rows = csvText.split(/\r?\n/);
+                    const records = [];
+                    
+                    // 略過第一列（表頭 i = 1 開始）
+                    for (let i = 1; i < rows.length; i++) {
+                        const row = rows[i].trim();
+                        if (!row) continue;
+                        
+                        const cols = this.parseCSVRow(row);
+                        
+                        // 依照原本設定的欄位： cols[1]:玩家暱稱, cols[2]:挑戰關卡, cols[3]:耗時(秒), cols[4]:時間格式
+                        if (cols.length >= 4) {
+                            const name = cols[1];
+                            const level = parseInt(cols[2]);
+                            const time = parseInt(cols[3]);
+                            let formattedTime = cols[4] ? cols[4] : '';
+                            
+                            // 確定關卡與時間都是有效數字
+                            if (!isNaN(level) && !isNaN(time)) {
+                                if (!formattedTime) formattedTime = this.formatTime(time);
+                                records.push({ name, level, time, formattedTime });
+                            }
+                        }
+                    }
+                    
+                    // 【核心排序規則】等級高優先（Desc） -> 秒數少優先（Asc）
+                    records.sort((a, b) => {
+                        if (b.level !== a.level) {
+                            return b.level - a.level;
+                        }
+                        return a.time - b.time;
+                    });
+                    
+                    // 呈現前 10 名即可
+                    const top10 = records.slice(0, 10);
+                    this.renderGlobalLeaderboard(top10);
+                    
+                } catch (error) {
+                    console.error('抓取全球排行榜失敗:', error);
+                    loadingMsg.innerText = '暫時無法載入排行（可能是試算表未公開或網路問題）';
+                }
+            },
+
+            // 渲染全服前 10 名到登入畫面
+            renderGlobalLeaderboard(records) {
+                const listContainer = document.getElementById('global-leaderboard-list');
+                const loadingMsg = document.getElementById('global-leaderboard-loading');
+                
+                loadingMsg.classList.add('hidden');
+                listContainer.classList.remove('hidden');
+                listContainer.innerHTML = '';
+                
+                if (records.length === 0) {
+                    listContainer.innerHTML = '<div class="text-center text-slate-400 text-sm font-bold py-4">試算表目前還沒有記錄喔，搶先成為第一名吧！</div>';
+                    return;
+                }
+                
+                records.forEach((record, index) => {
+                    let medal = `<span class="w-6 text-center font-bold text-slate-400">${index + 1}.</span>`;
+                    let bgClass = "bg-white border-slate-100";
+                    
+                    if (index === 0) { medal = "🥇"; bgClass = "bg-yellow-50 border-yellow-200"; }
+                    else if (index === 1) { medal = "🥈"; bgClass = "bg-slate-50 border-slate-200"; }
+                    else if (index === 2) { medal = "🥉"; bgClass = "bg-orange-50 border-orange-200"; }
+                    
+                    let levelText = record.level === 8 ? '<span class="text-rose-600 font-black">地獄(8)</span>' : 
+                                    record.level === 6 ? '<span class="text-orange-500 font-bold">挑戰(6)</span>' : 
+                                    '<span class="text-emerald-500 font-bold">入門(4)</span>';
+
+                    const el = document.createElement('div');
+                    el.className = `flex justify-between items-center p-3 rounded-xl border ${bgClass} shadow-sm text-sm transition-all hover:scale-[1.02]`;
+                    el.innerHTML = `
+                        <div class="flex items-center gap-2 flex-1 min-w-0">
+                            ${medal}
+                            <span class="text-slate-700 font-bold truncate max-w-[120px]" title="${record.name}">${record.name}</span>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="text-xs bg-slate-100 px-2 py-1 rounded-md min-w-[55px] text-center">${levelText}</span>
+                            <span class="font-black text-slate-600 bg-slate-100 px-2 py-1 rounded-md min-w-[55px] text-center">
+                                ${record.formattedTime}
+                            </span>
+                        </div>
+                    `;
+                    listContainer.appendChild(el);
                 });
             }
         };
